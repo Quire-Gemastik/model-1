@@ -1,8 +1,0 @@
-['Accountant' 'Backend Developer' 'Business Analyst' 'Cloud Architect'
- 'Copywriter' 'Cyber Security' 'Data Analyst' 'Data Engineer'
- 'Data Scientist' 'Digital Marketing' 'Finance Analyst'
- 'Frontend Developer' 'Game Developer' 'Human Resources Manager'
- 'IT Support' 'Legal Counsel' 'Machine Learning Engineer'
- 'Marketing Specialist' 'Product Manager' 'Project Manager'
- 'Public Relation Officer' 'Quality Assurance' 'Social Media Specialist'
- 'Software Developer' 'UI/UX Designer' 'Video Editor']
