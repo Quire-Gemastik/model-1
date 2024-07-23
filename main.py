@@ -1,22 +1,26 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from typing import List
 import joblib
 import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.preprocessing import LabelEncoder
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from scipy.spatial.distance import cosine
 from sklearn.metrics.pairwise import cosine_similarity
+import uvicorn
 import tensorflow as tf
 
-load_model = tf.keras.models.load_model
-# from tensorflow.keras.models import load_model
+keras = tf.keras
+load_model = keras.models.load_model
 
-model = load_model('model/content/model.h5', compile=False)
-label_encoder = joblib.load('model/content/label_encoder.pkl')
-tfidf_vectorizer = joblib.load('model/content/tfidf_vectorizer.pkl')
-keywords = joblib.load('model/content/keywords.pkl')
-feature_vec = joblib.load('model/content/feature_vec.pkl')
-labels = joblib.load('model/content/labels.pkl')
+model = load_model('Job Rec Story/model.h5', compile=False)
+label_encoder = joblib.load('Job Rec Story/label_encoder.pkl')
+tfidf_vectorizer = joblib.load('Job Rec Story/tfidf_vectorizer.pkl')
+keywords = joblib.load('Job Rec Story/keywords.pkl')
+feature_vec = joblib.load('Job Rec Story/feature_vec.pkl')
+labels = joblib.load('Job Rec Story/labels.pkl')
 
+# Tambahkan label "Tidak Ada Job yang sesuai"
+if "Tidak Ada Job yang sesuai" not in label_encoder.classes_:
+    label_encoder.classes_ = np.append(label_encoder.classes_, "Tidak Ada Job yang sesuai")
 
 job_descriptions = {
     "Software Developer": "Mengembangkan aplikasi canggih yang menjadi tulang punggung bisnis modern. Anda akan menulis kode yang elegan dan efisien, memecahkan masalah yang kompleks, dan berkolaborasi dengan tim lintas fungsi untuk menciptakan solusi perangkat lunak yang inovatif dan user-friendly.",
@@ -44,7 +48,18 @@ job_descriptions = {
     "Legal Counsel": "Memberikan panduan hukum yang strategis dan praktis untuk melindungi kepentingan perusahaan. Anda akan meninjau dan menyusun kontrak, menangani isu hukum, dan memastikan kepatuhan terhadap peraturan yang berlaku untuk mengurangi risiko hukum.",
     "Public Relation Officer": "Mengelola komunikasi publik dan media untuk membangun dan mempertahankan citra positif perusahaan. Anda akan menyusun siaran pers, mengoordinasikan acara publik, dan menjalin hubungan baik dengan media untuk meningkatkan reputasi perusahaan.",
     "Social Media Specialist": "Menciptakan konten yang menarik dan mengelola kehadiran merek di platform media sosial. Anda akan merancang strategi media sosial, berinteraksi dengan pengikut, dan menganalisis kinerja konten untuk meningkatkan visibilitas dan engagement merek.",
-    "Video Editor": "Mengubah rekaman mentah menjadi cerita visual yang menarik dan profesional. Anda akan menggunakan perangkat lunak pengeditan video untuk memotong, menyusun, dan memperbaiki rekaman, serta menambahkan efek dan musik untuk menciptakan konten yang memukau."
+    "Video Editor": "Mengubah rekaman mentah menjadi cerita visual yang menarik dan profesional. Anda akan menggunakan perangkat lunak pengeditan video untuk memotong, menyusun, dan memperbaiki rekaman, serta menambahkan efek dan musik untuk menciptakan konten yang memukau.",
+    "Penulis Konten": "Membuat konten berkualitas tinggi yang menarik dan informatif untuk berbagai platform. Anda akan menulis artikel, blog, dan materi pemasaran lainnya yang mampu menginspirasi, mengedukasi, dan melibatkan audiens, sambil menjaga gaya penulisan yang konsisten dan relevan dengan target pasar.",
+    "Customer Service Representative": "Memberikan layanan pelanggan yang luar biasa melalui berbagai saluran komunikasi. Anda akan menjawab pertanyaan, menangani keluhan, dan memberikan solusi cepat dan efektif untuk memastikan kepuasan pelanggan, sambil menjaga citra perusahaan yang positif.",
+    "Desainer Web": "Mendesain dan mengembangkan situs web yang menarik dan fungsional. Anda akan bekerja dengan tim untuk menciptakan tampilan visual yang memikat, navigasi yang intuitif, dan pengalaman pengguna yang optimal, sambil memastikan kompatibilitas dengan berbagai perangkat dan platform.",
+    "Data Entry Specialist": "Memasukkan, memperbarui, dan memelihara data penting dalam sistem komputer dengan akurasi tinggi. Anda akan memastikan bahwa data yang dikelola selalu terorganisir dan up-to-date, serta membantu dalam analisis data untuk mendukung pengambilan keputusan bisnis.",
+    "Penerjemah": "Menerjemahkan dokumen, percakapan, dan materi lainnya dari satu bahasa ke bahasa lain dengan akurasi dan kepekaan budaya. Anda akan memastikan bahwa makna dan nuansa asli tetap terjaga, sambil membantu memfasilitasi komunikasi yang efektif di lingkungan multibahasa.",
+    "Social Media Manager": "Mengelola dan mengembangkan strategi media sosial untuk meningkatkan visibilitas dan keterlibatan merek. Anda akan membuat konten yang menarik, menganalisis kinerja kampanye, dan berinteraksi dengan komunitas online untuk membangun hubungan yang kuat dan positif dengan audiens.",
+    "Graphic Designer": "Menciptakan desain visual yang menarik dan efektif untuk berbagai keperluan, termasuk iklan, publikasi, dan identitas merek. Anda akan menggunakan kreativitas dan keterampilan teknis untuk menghasilkan karya yang memikat dan sesuai dengan pesan yang ingin disampaikan.",
+    "Online Tutor": "Memberikan pengajaran dan bimbingan online dalam berbagai mata pelajaran. Anda akan merancang dan menyampaikan materi pelajaran yang menarik, memberikan umpan balik konstruktif, dan membantu siswa mencapai tujuan akademis mereka melalui platform pembelajaran jarak jauh.",
+    "Virtual Assistant": "Menyediakan dukungan administratif dan operasional secara jarak jauh. Anda akan mengelola kalender, mengatur jadwal, menyiapkan laporan, dan menjalankan tugas-tugas administratif lainnya untuk membantu klien menjaga produktivitas dan efisiensi kerja.",
+    "SEO Specialist": "Mengoptimalkan konten dan situs web untuk meningkatkan peringkat di mesin pencari. Anda akan melakukan riset kata kunci, menganalisis data web, dan mengimplementasikan strategi SEO untuk meningkatkan visibilitas online dan mengarahkan lebih banyak lalu lintas organik ke situs web.",
+    "Tidak Ada Job yang sesuai": "Deskripsi tidak ditemukan"
 }
 
 
@@ -53,12 +68,15 @@ app = FastAPI()
 class UserInput(BaseModel):
     text: str
 
-def modelFunction(user_input, tfidf_vectorizer):
+def modelFunction(user_input: str, tfidf_vectorizer) -> tuple:
     user_tfidf = tfidf_vectorizer.transform([user_input])
 
     predicted_probabilities = model.predict(user_tfidf.toarray())
     predicted_label = np.argmax(predicted_probabilities, axis=1)[0]
     predicted_label_string = label_encoder.inverse_transform([predicted_label])[0]
+
+    if predicted_probabilities[0][predicted_label] < 0.7:
+        predicted_label_string = "Tidak Ada Job yang sesuai"
 
     input_keywords = set(word.lower() for word in user_input.split() if word.lower() in keywords.get(predicted_label_string, []))
 
@@ -68,7 +86,7 @@ def modelFunction(user_input, tfidf_vectorizer):
 
     if keyword_indices:
         keyword_mask = feature_vec[:, keyword_indices].sum(axis=1).A1 > 0
-        user_similarity[keyword_mask] *= 2.0
+        user_similarity[keyword_mask] *= 1.5
 
     index_similar_texts = user_similarity.argsort()[::-1]
 
@@ -84,13 +102,13 @@ def modelFunction(user_input, tfidf_vectorizer):
         label_string = label_encoder.inverse_transform([label])[0]
         if label_string not in unique_labels:
             unique_labels.add(label_string)
-            recommended_labels.append(label_string)
-            similarities.append(user_similarity[idx])
+            if label_string != predicted_label_string:
+                recommended_labels.append(label_string)
+                similarities.append(user_similarity[idx])
 
-    if predicted_label_string in recommended_labels:
-        index_to_remove = recommended_labels.index(predicted_label_string)
-        del recommended_labels[index_to_remove]
-        del similarities[index_to_remove]
+    if predicted_label_string == "Tidak Ada Job yang sesuai":
+        recommended_labels = []
+        similarities = []
 
     return predicted_label, predicted_label_string, recommended_labels[:5], similarities[:5]
 
@@ -117,3 +135,6 @@ async def predict(input: UserInput):
 @app.get("/")
 def read_root():
     return {"Hello": "World"}
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
